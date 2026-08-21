@@ -109,14 +109,12 @@ streamlit run app/app.py
 
 ---
 
-## 👥 Team & Task Division
-
-| Member | Responsibility |
-|---|---|
-| Member 1 | Data preprocessing & EDA |
-| Member 2 | Feature selection & training all 3 models (Random Forest, XGBoost, Logistic Regression) |
-| Member 3 | Threshold calibration (ROC), evaluation (confusion matrix, per-category recall, k-fold check), model comparison |
-| Member 4 | Streamlit demo app & presentation slides |
+## 👥 Team & Task Division 
+Member	Responsibility	Status / Next Tasks
+Member 1	Data preprocessing & EDA	Completed
+Member 2	Feature selection & XGBoost Model Tuning	Completed: Removed collinear features, evaluated subsets, tuned hyperparameters, exported final_xgboost_model.pkl
+Member 3	Threshold calibration, Logistic Regression baseline & model evaluation comparison	Next Task: 1. Evaluate Logistic Regression using the 19 champion features. 2. Verify K-Fold cross-validation on the champion model. 3. Build comparative confusion matrix plots
+Member 4	Streamlit demo app & presentation slides	Next Task: Load final_xgboost_model.pkl in Streamlit. Extract scaler and model, transform user inputs using only the 19 features, and apply the optimal threshold (0.3425) for binary prediction
 
 Report sections (Literature Review, Sustainability & Societal Impact, Ethical Considerations, etc.) should be divided among all members alongside the coding tasks — see **Assignment Requirements** below.
 
