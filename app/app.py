@@ -1,75 +1,700 @@
 from pathlib import Path
+from textwrap import dedent
 
 import joblib
 import numpy as np
 import streamlit as st
 
 
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
+st.set_page_config(
+    page_title="Network Intrusion Detection System",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# =========================================================
+# UI STYLING
+# =========================================================
+st.markdown(
+    dedent(
+        """
+        <style>
+        .block-container {
+            max-width: 1200px;
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
+
+        section[data-testid="stSidebar"] .block-container {
+            padding-top: 2rem;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button {
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            min-height: 3rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button:hover {
+            background-color: #1d4ed8;
+            color: white;
+            border: none;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button:focus {
+            background-color: #1d4ed8;
+            color: white;
+            border: none;
+        }
+
+        div[data-testid="stMetric"] {
+            border: 1px solid rgba(128, 128, 128, 0.20);
+            border-radius: 10px;
+            padding: 1rem;
+        }
+
+        div[data-testid="stExpander"] {
+            border-radius: 8px;
+        }
+
+        .stNumberInput input {
+            border-radius: 6px;
+        }
+        </style>
+        """
+    ),
+    unsafe_allow_html=True,
+)
+
+
+# =========================================================
+# MODEL LOCATION
+# =========================================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 MODEL_PATH = (
-    Path(__file__).resolve().parent.parent
+    BASE_DIR
     / "models"
     / "final_xgboost_model.pkl"
 )
 
 
+# =========================================================
+# LOAD MODEL
+# =========================================================
 @st.cache_resource
-def load_model():
+def load_model_package():
+    """Load the saved NIDS model package."""
     return joblib.load(MODEL_PATH)
 
 
-package = load_model()
-model = package["model"]
-features = package["features"]
-scaler = package["scaler"]
-threshold = package["optimal_threshold"]
-feature_indices = package["feature_indices"]
+try:
+    package = load_model_package()
 
-st.title("Network Intrusion Detection System")
-st.success("Model loaded successfully!")
-st.write("Features:", package["features"])
-st.write("Number of features:", len(package["features"]))
-st.write("Optimal threshold:", package["optimal_threshold"])
-st.write("Package keys:", list(package.keys()))
-st.subheader("Enter Network Traffic Features")
+    model = package["model"]
+    features = list(package["features"])
+    scaler = package["scaler"]
+
+    threshold = float(
+        package["optimal_threshold"]
+    )
+
+    feature_indices = np.asarray(
+        package["feature_indices"],
+        dtype=int,
+    )
+
+except Exception as error:
+    st.error(
+        "The trained model could not be loaded. "
+        "Please verify the model file and project dependencies."
+    )
+
+    with st.expander("Technical error details"):
+        st.code(str(error))
+
+    st.stop()
+
+
+# =========================================================
+# VALIDATE MODEL PACKAGE
+# =========================================================
+if len(features) != len(feature_indices):
+    st.error(
+        "The model package contains inconsistent "
+        "feature information."
+    )
+    st.stop()
+
+
+# =========================================================
+# FEATURE LABELS
+# =========================================================
+FEATURE_LABELS = {
+    "ct_dst_src_ltm":
+        "Destination–Source Connection Count",
+
+    "ct_state_ttl":
+        "State / TTL Connection Count",
+
+    "rate":
+        "Packet Rate",
+
+    "sttl":
+        "Source Time To Live (STTL)",
+
+    "sload":
+        "Source Load",
+
+    "sbytes":
+        "Source Bytes",
+
+    "ct_dst_sport_ltm":
+        "Destination–Source Port Count",
+
+    "smean":
+        "Mean Source Packet Size",
+
+    "synack":
+        "SYN–ACK Time",
+
+    "dbytes":
+        "Destination Bytes",
+
+    "dur":
+        "Connection Duration",
+
+    "dmean":
+        "Mean Destination Packet Size",
+
+    "dttl":
+        "Destination Time To Live (DTTL)",
+
+    "sinpkt":
+        "Source Inter-Packet Time",
+
+    "dload":
+        "Destination Load",
+
+    "dinpkt":
+        "Destination Inter-Packet Time",
+
+    "ackdat":
+        "ACK–Data Time",
+
+    "state":
+        "Connection State (Encoded)",
+}
+
+
+# =========================================================
+# FEATURE DESCRIPTIONS
+# =========================================================
+FEATURE_HELP = {
+    "ct_dst_src_ltm":
+        "Number of recent connections between "
+        "the source and destination.",
+
+    "ct_state_ttl":
+        "Count of connections with similar "
+        "state and TTL characteristics.",
+
+    "rate":
+        "Packet transmission rate of the network flow.",
+
+    "sttl":
+        "Time-to-live value of packets sent by the source.",
+
+    "sload":
+        "Network load generated by the source.",
+
+    "sbytes":
+        "Total number of bytes transmitted by the source.",
+
+    "ct_dst_sport_ltm":
+        "Recent connection count involving the "
+        "destination and source port.",
+
+    "smean":
+        "Average size of packets transmitted by the source.",
+
+    "synack":
+        "Time difference between SYN and ACK packets.",
+
+    "dbytes":
+        "Total number of bytes transmitted by the destination.",
+
+    "dur":
+        "Total duration of the network connection.",
+
+    "dmean":
+        "Average size of packets transmitted by the destination.",
+
+    "dttl":
+        "Time-to-live value of packets sent by the destination.",
+
+    "sinpkt":
+        "Average interval between source packets.",
+
+    "dload":
+        "Network load generated by the destination.",
+
+    "dinpkt":
+        "Average interval between destination packets.",
+
+    "ackdat":
+        "Time difference between ACK and data packets.",
+
+    "state":
+        (
+            "Encoded connection-state value used during training. "
+            "The original LabelEncoder is not included in the "
+            "current saved model package."
+        ),
+}
+
+
+# =========================================================
+# SIDEBAR
+# =========================================================
+with st.sidebar:
+    st.title("NIDS")
+
+    st.caption(
+        "Network Intrusion Detection System"
+    )
+
+    st.divider()
+
+    st.subheader("System Overview")
+
+    st.write(
+        "This application provides an interactive "
+        "deployment interface for the project's "
+        "trained XGBoost intrusion detection model."
+    )
+
+    st.divider()
+
+    st.subheader("Model Configuration")
+
+    st.markdown("**Classifier**")
+    st.write("XGBoost")
+
+    st.markdown("**Selected Features**")
+    st.write(str(len(features)))
+
+    st.markdown("**Decision Threshold**")
+    st.write(f"{threshold:.4f}")
+
+    st.divider()
+
+    st.subheader("Classification Rule")
+
+    st.markdown(
+        "**Normal Traffic**  \n"
+        "Attack probability is below the calibrated threshold."
+    )
+
+    st.markdown(
+        "**Attack Traffic**  \n"
+        "Attack probability is equal to or greater than "
+        "the calibrated threshold."
+    )
+
+    st.divider()
+
+    st.caption(
+        "The model, selected features, scaler and decision "
+        "threshold are loaded from the saved model package."
+    )
+
+
+# =========================================================
+# MAIN HEADER
+# =========================================================
+st.title("🛡️ Network Intrusion Detection System")
+
+st.markdown(
+    """
+    Analyze network-flow characteristics using a trained
+    **XGBoost classifier** and a calibrated binary decision threshold.
+    """
+)
+
+st.caption(
+    "Academic demonstration based on the project's "
+    "Network Intrusion Detection pipeline."
+)
+
+st.divider()
+
+
+# =========================================================
+# INPUT SECTION
+# =========================================================
+st.header("Network Traffic Analysis")
+
+st.write(
+    "Enter the required characteristics of the network flow below. "
+    "The values should follow the same representation used during "
+    "model training."
+)
+
 
 input_values = {}
 
-with st.form("prediction_form"):
-    for feature in features:
-        input_values[feature] = st.number_input(
-            feature,
-            value=0.0,
-            format="%.6f"
+
+# =========================================================
+# INPUT FORM
+# =========================================================
+with st.form(
+    "prediction_form",
+    clear_on_submit=False,
+):
+
+    left_column, right_column = st.columns(
+        2,
+        gap="large",
+    )
+
+    for index, feature in enumerate(features):
+
+        current_column = (
+            left_column
+            if index % 2 == 0
+            else right_column
         )
 
-    submitted = st.form_submit_button("Analyze Traffic")
+        label = FEATURE_LABELS.get(
+            feature,
+            feature.replace("_", " ").title(),
+        )
 
+        help_text = FEATURE_HELP.get(
+            feature,
+            f"Input value for {feature}.",
+        )
+
+        with current_column:
+
+            if feature == "state":
+
+                input_values[feature] = st.number_input(
+                    label,
+                    min_value=0,
+                    value=0,
+                    step=1,
+                    help=help_text,
+                    key=f"input_{feature}",
+                )
+
+            else:
+
+                input_values[feature] = st.number_input(
+                    label,
+                    value=0.0,
+                    format="%.6f",
+                    help=help_text,
+                    key=f"input_{feature}",
+                )
+
+            st.caption(
+                f"Model feature: `{feature}`"
+            )
+
+    st.write("")
+
+    submitted = st.form_submit_button(
+        "Run Intrusion Analysis",
+        type="primary",
+        use_container_width=True,
+    )
+
+
+# =========================================================
+# PREDICTION
+# =========================================================
 if submitted:
-    raw_values = np.array(
-        [input_values[feature] for feature in features],
-        dtype=float
+
+    try:
+        # -------------------------------------------------
+        # Collect input in exact model feature order
+        # -------------------------------------------------
+        raw_values = np.asarray(
+            [
+                float(input_values[feature])
+                for feature in features
+            ],
+            dtype=float,
+        )
+
+        # -------------------------------------------------
+        # Input validation
+        # -------------------------------------------------
+        if not np.all(
+            np.isfinite(raw_values)
+        ):
+            st.error(
+                "All input values must be valid finite numbers."
+            )
+            st.stop()
+
+        # -------------------------------------------------
+        # Extract scaler statistics for selected features
+        # -------------------------------------------------
+        scaler_means = np.asarray(
+            scaler.mean_,
+            dtype=float,
+        )
+
+        scaler_scales = np.asarray(
+            scaler.scale_,
+            dtype=float,
+        )
+
+        selected_means = scaler_means[
+            feature_indices
+        ]
+
+        selected_scales = scaler_scales[
+            feature_indices
+        ]
+
+        # Prevent division by zero
+        selected_scales = np.where(
+            selected_scales == 0,
+            1.0,
+            selected_scales,
+        )
+
+        # -------------------------------------------------
+        # Apply training-time standardization
+        # -------------------------------------------------
+        scaled_values = (
+            raw_values - selected_means
+        ) / selected_scales
+
+        model_input = scaled_values.reshape(
+            1,
+            -1,
+        )
+
+        # -------------------------------------------------
+        # Predict attack probability
+        # -------------------------------------------------
+        probability_output = model.predict_proba(
+            model_input
+        )
+
+        attack_probability = float(
+            probability_output[0, 1]
+        )
+
+        # -------------------------------------------------
+        # Apply calibrated threshold
+        # -------------------------------------------------
+        prediction = int(
+            attack_probability >= threshold
+        )
+
+        # =================================================
+        # RESULTS
+        # =================================================
+        st.divider()
+
+        st.header("Analysis Result")
+
+        metric_1, metric_2, metric_3 = st.columns(
+            3
+        )
+
+        with metric_1:
+            st.metric(
+                label="Attack Probability",
+                value=f"{attack_probability:.2%}",
+            )
+
+        with metric_2:
+            st.metric(
+                label="Decision Threshold",
+                value=f"{threshold:.2%}",
+            )
+
+        with metric_3:
+            st.metric(
+                label="Classification",
+                value=(
+                    "Attack"
+                    if prediction == 1
+                    else "Normal"
+                ),
+            )
+
+        st.write("")
+
+        # -------------------------------------------------
+        # Probability visualization
+        # -------------------------------------------------
+        st.progress(
+            min(
+                max(
+                    attack_probability,
+                    0.0,
+                ),
+                1.0,
+            ),
+            text="Estimated attack probability",
+        )
+
+        st.write("")
+
+        # -------------------------------------------------
+        # Final classification
+        # -------------------------------------------------
+        if prediction == 1:
+
+            st.error(
+                "⚠️ Potential Intrusion Detected"
+            )
+
+            st.warning(
+                f"The model estimated an attack probability of "
+                f"{attack_probability:.2%}, which is equal to or "
+                f"greater than the calibrated threshold of "
+                f"{threshold:.2%}. The network traffic is therefore "
+                f"classified as potentially malicious."
+            )
+
+        else:
+
+            st.success(
+                "✅ Normal / Benign Traffic"
+            )
+
+            st.info(
+                f"The model estimated an attack probability of "
+                f"{attack_probability:.2%}, which is below the "
+                f"calibrated threshold of {threshold:.2%}. "
+                f"The network traffic is therefore classified "
+                f"as normal."
+            )
+
+        # -------------------------------------------------
+        # Technical prediction details
+        # -------------------------------------------------
+        with st.expander(
+            "View Prediction Details"
+        ):
+
+            detail_col_1, detail_col_2 = st.columns(
+                2
+            )
+
+            with detail_col_1:
+
+                st.markdown(
+                    "**Model**"
+                )
+                st.write(
+                    "XGBoost Classifier"
+                )
+
+                st.markdown(
+                    "**Number of Features**"
+                )
+                st.write(
+                    str(len(features))
+                )
+
+            with detail_col_2:
+
+                st.markdown(
+                    "**Raw Attack Probability**"
+                )
+                st.write(
+                    f"{attack_probability:.6f}"
+                )
+
+                st.markdown(
+                    "**Decision Threshold**"
+                )
+                st.write(
+                    f"{threshold:.6f}"
+                )
+
+            st.markdown(
+                "**Final Predicted Class**"
+            )
+
+            st.write(
+                "Attack / Intrusion"
+                if prediction == 1
+                else "Normal / Benign"
+            )
+
+    # =====================================================
+    # ERROR HANDLING
+    # =====================================================
+    except Exception as error:
+
+        st.error(
+            "The prediction could not be completed. "
+            "Please verify the supplied input values."
+        )
+
+        with st.expander(
+            "Technical Error Details"
+        ):
+            st.code(
+                str(error)
+            )
+
+
+# =========================================================
+# IMPLEMENTATION INFORMATION
+# =========================================================
+st.write("")
+st.divider()
+
+with st.expander(
+    "Model Deployment Information"
+):
+
+    st.markdown(
+        """
+        The deployed model package currently contains:
+
+        - Trained XGBoost classifier
+        - Selected feature list
+        - StandardScaler
+        - Selected feature indices
+        - Calibrated binary decision threshold
+        """
     )
 
-    selected_means = scaler.mean_[feature_indices]
-    selected_scales = scaler.scale_[feature_indices]
-
-    scaled_values = (
-        raw_values - selected_means
-    ) / selected_scales
-
-    model_input = scaled_values.reshape(1, -1)
-
-    attack_probability = float(
-        model.predict_proba(model_input)[0, 1]
+    st.warning(
+        "The current saved model package does not contain the "
+        "original LabelEncoder used for the categorical `state` "
+        "feature. Therefore, the interface currently requires the "
+        "encoded numerical state value. A production deployment "
+        "should export and reuse the original encoder."
     )
 
-    prediction = int(
-        attack_probability >= threshold
-    )
 
-    st.write("Attack Probability:", attack_probability)
-
-    if prediction == 1:
-        st.error("⚠️ Intrusion / Attack Detected")
-    else:
-        st.success("✅ Normal / Benign Traffic")
+# =========================================================
+# FOOTER
+# =========================================================
+st.caption(
+    "Network Intrusion Detection System (NIDS) · "
+    "XGBoost Classification Demo · Academic Project"
+)
